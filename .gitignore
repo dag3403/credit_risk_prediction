@@ -5,6 +5,7 @@ __pycache__/
 
 # Entornos y secretos
 .venv/
+.venv-*/
 venv/
 env/
 .env
