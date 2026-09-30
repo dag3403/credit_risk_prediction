@@ -1,0 +1,8 @@
+**
+!Dockerfile
+!deployment
+!deployment/requirements.txt
+!app
+!app/**
+!artifacts
+!artifacts/credit_risk_model_bundle.joblib
