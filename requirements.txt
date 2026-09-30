@@ -4,5 +4,9 @@ matplotlib
 seaborn
 scipy
 scikit-learn
+imbalanced-learn
+xgboost
+shap
 jupyter
 notebook
+ipykernel

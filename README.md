@@ -15,11 +15,26 @@ credit-risk-prediction/
 │   └── loan_data.csv
 ├── notebooks/
 │   ├── credit_risk_analysis.ipynb
-├── src/
+│   └── loan_data.csv
+├── src/credit_risk_modeling.ipynb
 │   └── ...
 └── models/
     └── ...
 ```
+
+## Entorno virtual para ejecutar los notebooks
+
+Se recomienda trabajar con un entorno virtual para que los notebooks queden aislados del resto del sistema:
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+python -m ipykernel install --user --name credit-risk --display-name "Python (credit-risk)"
+```
+
+Después, desde VS Code se puede seleccionar el kernel `Python (credit-risk)` para ejecutar `notebooks/credit_risk_analysis.ipynb` y `notebooks/credit_risk_modeling.ipynb`.
 
 ## Trabajo realizado
 
