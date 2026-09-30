@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyd
+
+# Entornos y secretos
+.venv/
+venv/
+env/
+.env
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Editores e IDE
+.vscode/
+.idea/
+
+# Modelos, resultados y registros
+*.pkl
+*.joblib
+models/
+outputs/
+logs/
+
+# Windows
+Thumbs.db
+Desktop.ini
