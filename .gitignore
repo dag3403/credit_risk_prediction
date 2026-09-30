@@ -13,6 +13,9 @@ env/
 # Jupyter
 .ipynb_checkpoints/
 
+# Pruebas y herramientas
+.pytest_cache/
+
 # Editores e IDE
 .vscode/
 .idea/
@@ -23,6 +26,8 @@ env/
 models/
 outputs/
 logs/
+!artifacts/
+!artifacts/*.joblib
 
 # Windows
 Thumbs.db
