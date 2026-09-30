@@ -1,0 +1,11 @@
+{
+  "model_name": "Regresión logística — sin balanceo",
+  "target": "not.fully.paid",
+  "test_rows": 1916,
+  "features": 13,
+  "transformed_features": 19,
+  "threshold": 0.13264508137938025,
+  "probability_max_abs_difference": 0.0,
+  "predictions_exact_match": true,
+  "threshold_exact_match": true
+}
