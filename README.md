@@ -1,95 +1,130 @@
 # Credit Risk Review Prioritization
 
-Proyecto reproducible para estimar `P(not.fully.paid = 1)` en préstamos históricos de LendingClub y priorizar casos para revisión humana. **No es un sistema automático de aprobación o rechazo de préstamos.** Una probabilidad alta indica mayor afinidad estimada con la clase positiva, no certeza de impago.
+Proyecto de análisis y modelado de riesgo crediticio que estima la probabilidad de que un préstamo no se pague completamente y permite ordenar solicitudes para revisión humana. Incluye análisis exploratorio, comparación de modelos, evaluación con capacidad limitada y una API de inferencia con FastAPI.
 
-El conjunto contiene 9.578 observaciones de 2007–2010. La aplicación del modelo a datos actuales requiere validación externa, evaluación de equidad y controles de gobernanza antes de cualquier uso real.
+> **Uso responsable:** este proyecto es demostrativo y utiliza datos históricos de préstamos de LendingClub de 2007–2010. Una puntuación alta no demuestra que un préstamo vaya a impagarse ni debe utilizarse por sí sola para aprobar, rechazar o fijar las condiciones de un crédito. El modelo no está validado para decisiones actuales; cualquier uso real requeriría validación externa, evaluación de equidad, controles de privacidad y supervisión adecuada.
 
-## Flujo de modelado
+## Contenido
 
-- El notebook de EDA, `notebooks/credit_risk_analysis.ipynb`, se conserva intacto.
-- La modelización y selección final están en `notebooks/credit_risk_modeling.ipynb`.
-- Target: `not.fully.paid`; clase 0 = pagado completamente, clase 1 = no pagado completamente.
-- Se comparan baseline, regresión logística, Random Forest y XGBoost; la evaluación operativa final se centra en regresión logística sin balanceo, regresión logística con RandomOverSampler, Random Forest con `class_weight` y XGBoost ajustado.
-- La selección se realiza en validación por Recall@K y la jerarquía de métricas documentada; PR-AUC de validación cruzada sobre entrenamiento informa estabilidad. Test se reserva para evaluación final y no interviene en selección del modelo, capacidad o threshold.
-- Los escenarios K = 500, 750, 1.000, 1.250 y 1.500 son capacidades hipotéticas, no medidas reales de un equipo de LendingClub.
+- [Datos y metodología](#datos-y-metodología)
+- [Resultados](#resultados)
+- [Estructura del repositorio](#estructura-del-repositorio)
+- [Instalación y reproducción](#instalación-y-reproducción)
+- [API](#api)
+- [Validación y tests](#validación-y-tests)
+- [Limitaciones](#limitaciones)
 
-La evaluación reproducible seleccionó **Regresión logística sin balanceo** con capacidad hipotética de 1.000 revisiones. En validación obtuvo Recall@1.000 = 0,7296, 224 TP, 776 FP, 83 FN y PR-AUC = 0,2995; la PR-AUC media de validación cruzada en entrenamiento fue 0,2816 (desviación estándar 0,0134). El test reservado confirmó Recall@1.000 = 0,7329 (225 TP, 775 FP, 82 FN) y PR-AUC = 0,3042. Se eligió con validación; el resultado de test solo se informa como evaluación final.
+## Datos y metodología
 
-El threshold de producción es **0,13264508**, fijado en validación a partir del score del préstamo situado en el puesto 1.000. Aplicado sin cambios al test, generó 972 alertas (50,73 % de los préstamos), recall = 0,7134, 219 TP, 753 FP y 88 FN. Las demás configuraciones y capacidades están en `reports/`; la selección no se basó solo en accuracy, ROC-AUC o F2.
+El dataset incluido en [`data/loan_data.csv`](data/loan_data.csv) contiene 9.578 préstamos concedidos entre 2007 y 2010. El objetivo es `not.fully.paid`: `1` indica que el préstamo no se pagó completamente y `0`, que se pagó por completo. El modelo utiliza 13 variables, entre ellas el propósito del préstamo, el tipo de interés, el historial crediticio y los indicadores de utilización del crédito.
 
-Recall@K del modelo seleccionado, calculado por ranking directo de probabilidades:
+El análisis exploratorio está en [`notebooks/credit_risk_analysis.ipynb`](notebooks/credit_risk_analysis.ipynb) y el proceso de modelado y evaluación, en [`notebooks/credit_risk_modeling.ipynb`](notebooks/credit_risk_modeling.ipynb). Se comparan modelos baseline, regresión logística, Random Forest y XGBoost. La selección se hace con datos de validación, priorizando Recall@K para capacidades hipotéticas de revisión; el conjunto de test reservado se utiliza solo para la evaluación final.
 
-| K | TP | FP | FN | Recall@K | Precision@K | Cartera revisada |
-|---:|---:|---:|---:|---:|---:|---:|
-| 500 | 135 | 365 | 172 | 0,4397 | 0,2700 | 26,10 % |
-| 750 | 183 | 567 | 124 | 0,5961 | 0,2440 | 39,14 % |
-| 1.000 | 225 | 775 | 82 | 0,7329 | 0,2250 | 52,19 % |
-| 1.250 | 257 | 993 | 50 | 0,8371 | 0,2056 | 65,24 % |
-| 1.500 | 286 | 1.214 | 21 | 0,9316 | 0,1907 | 78,29 % |
+El artefacto de inferencia versionado es [`artifacts/credit_risk_model_bundle.joblib`](artifacts/credit_risk_model_bundle.joblib). Contiene el pipeline entrenado, el umbral operativo, los nombres de las variables y metadatos. La API lo carga para puntuar registros; no vuelve a entrenar el modelo durante las solicitudes.
 
-El threshold por capacidad es el score del puesto K en validación; al aplicarlo sin cambios a test, los empates y el cambio de muestra pueden alterar el número de alertas:
+## Resultados
 
-| K de validación | Threshold | Alertas test | Cartera test revisada | Recall test |
-|---:|---:|---:|---:|---:|
-| 500 | 0,19476845 | 475 | 24,79 % | 0,4300 |
-| 750 | 0,15858615 | 739 | 38,57 % | 0,5896 |
-| 1.000 | 0,13264508 | 972 | 50,73 % | 0,7134 |
-| 1.250 | 0,11138934 | 1.235 | 64,46 % | 0,8339 |
-| 1.500 | 0,09008706 | 1.502 | 78,39 % | 0,9316 |
+La configuración seleccionada en validación es una **regresión logística sin balanceo**, con capacidad hipotética de 1.000 revisiones. El umbral operativo guardado en el artefacto es **0,13264508**, calculado en validación a partir de la puntuación del caso situado en el puesto 1.000.
 
-Thresholds derivados en validación para los objetivos de recall del modelo seleccionado y resultados al aplicarlos sin cambios al test:
+| Evaluación | Recall@1.000 | PR-AUC | Resultado adicional |
+|---|---:|---:|---|
+| Validación | 0,7296 | 0,2995 | 224 positivos identificados de 307 |
+| Test reservado | 0,7329 | 0,3042 | 225 positivos identificados de 307 |
+| Test con el umbral operativo | — | — | 972 alertas; recall 0,7134 |
 
-| Recall objetivo | Threshold validación | Recall validación | Alertas test | Recall test | FP test | FN test |
-|---:|---:|---:|---:|---:|---:|---:|
-| 0,90 | 0,10031500 | 0,9023 | 1.388 | 0,8990 | 1.112 | 31 |
-| 0,95 | 0,08552488 | 0,9511 | 1.539 | 0,9414 | 1.250 | 18 |
-| 0,98 | 0,06962319 | 0,9805 | 1.708 | 0,9772 | 1.408 | 7 |
+Recall@K ordena directamente por probabilidad y selecciona exactamente los primeros K registros. En el test, los resultados del ranking fueron:
 
-El número real de alertas con un threshold validado puede diferir ligeramente de K al cambiar de muestra. El endpoint `/prioritize` respeta K exactamente para el lote que recibe; `/predict` y `/predict-file` aplican el threshold del artefacto.
+| K | Recall@K | Precision@K | Casos positivos identificados |
+|---:|---:|---:|---:|
+| 500 | 0,4397 | 0,2700 | 135 |
+| 750 | 0,5961 | 0,2440 | 183 |
+| 1.000 | 0,7329 | 0,2250 | 225 |
+| 1.250 | 0,8371 | 0,2056 | 257 |
+| 1.500 | 0,9316 | 0,1907 | 286 |
 
-## Preparación del entorno y evaluación
+La aplicación de un umbral fijado en validación a otra muestra no garantiza exactamente K alertas: la distribución de puntuaciones y los empates pueden cambiar el recuento. `/prioritize` permite aplicar una capacidad exacta al lote recibido. Los resultados y métricas complementarios están en [`reports/`](reports/).
 
-En PowerShell desde la raíz del repositorio:
+## Estructura del repositorio
 
-```powershell
-python -m venv .venv
-.\.venv\Scripts\Activate.ps1
-python -m pip install --upgrade pip
-python -m pip install -r requirements.txt
-python -m ipykernel install --user --name credit-risk --display-name "Python (credit-risk)"
+```text
+app/                 API de inferencia FastAPI
+artifacts/           Pipeline de producción serializado
+data/                Dataset histórico utilizado
+deployment/          Dependencias de inferencia y validador de equivalencia
+notebooks/           Análisis exploratorio y modelado
+reports/             Métricas, selección y resultados reproducibles
+src/credit_risk/     Funciones de evaluación y generación de informes
+tests/               Tests de evaluación y API
+Dockerfile           Imagen del servicio de inferencia
+requirements.txt     Dependencias para notebooks, entrenamiento y tests
 ```
 
-Ejecutar el notebook completo y regenerar el artefacto:
+## Instalación y reproducción
+
+Se recomienda **Python 3.14**, que es la versión utilizada por la imagen Docker del proyecto.
+
+Crear y activar un entorno virtual:
+
+```bash
+python -m venv .venv
+```
+
+En Windows PowerShell:
 
 ```powershell
+.\.venv\Scripts\Activate.ps1
+```
+
+En macOS o Linux:
+
+```bash
+source .venv/bin/activate
+```
+
+Instalar las dependencias del proyecto:
+
+```bash
+python -m pip install --upgrade pip
+python -m pip install -r requirements.txt
+```
+
+Para ejecutar los notebooks de forma interactiva:
+
+```bash
+jupyter notebook
+```
+
+Abrir `notebooks/credit_risk_modeling.ipynb` y ejecutar sus celdas para reproducir el entrenamiento y la evaluación. El notebook actualiza el artefacto del modelo y los informes de `reports/`. También puede ejecutarse de forma no interactiva:
+
+```bash
 jupyter nbconvert --to notebook --execute --inplace notebooks/credit_risk_modeling.ipynb
 ```
 
-Las salidas persistentes de la evaluación se escriben en `reports/`; el bundle de inferencia, en `artifacts/credit_risk_model_bundle.joblib`.
+El dataset y el artefacto utilizado por la API ya están incluidos en el repositorio; volver a ejecutar el notebook es necesario para reproducir o regenerar el modelo, no para iniciar el servicio.
 
-## API de priorización
+## API
 
-La API carga el bundle generado por el notebook; no reentrena modelos ni imputadores durante las solicitudes.
+La API carga el bundle existente y ofrece estos endpoints:
 
-| Método | Ruta | Uso |
+| Método | Ruta | Descripción |
 |---|---|---|
-| `GET` | `/health` | Estado del servicio, modelo, target y threshold |
-| `POST` | `/predict` | Puntuar un préstamo |
-| `POST` | `/predict-file` | Puntuar un objeto/lista JSON o un CSV y devolver los casos ordenados por probabilidad descendente |
-| `POST` | `/prioritize` | Ordenar registros JSON o CSV y, opcionalmente, marcar los primeros K como `review` |
-| `GET` | `/sample-json` | Obtener un ejemplo de entrada válido |
-| `GET` | `/docs` | Documentación Swagger/OpenAPI |
+| `GET` | `/health` | Estado del servicio y metadatos básicos del modelo |
+| `GET` | `/sample-json` | Ejemplo de registro válido |
+| `POST` | `/predict` | Puntúa un préstamo y aplica el umbral del artefacto |
+| `POST` | `/predict-file` | Puntúa un registro, una lista JSON o un CSV y devuelve los resultados ordenados |
+| `POST` | `/prioritize` | Ordena un lote y, opcionalmente, marca los primeros K para revisión |
+| `GET` | `/docs` | Documentación interactiva Swagger/OpenAPI |
 
-Ejecutar localmente:
+### Ejecución local
 
-```powershell
-.\.venv\Scripts\Activate.ps1
+Instalar las dependencias de inferencia y arrancar el servicio:
+
+```bash
+python -m pip install -r deployment/requirements.txt
 uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
-La API no incorpora autenticación ni TLS. Mantén el servicio en loopback para desarrollo; antes de exponerlo en una red, añade autenticación, TLS, control de acceso, monitorización y los controles de privacidad/gobernanza requeridos.
-
-Ejemplo PowerShell:
+La documentación interactiva queda disponible en <http://127.0.0.1:8000/docs>. Para probar una predicción en PowerShell:
 
 ```powershell
 $sample = Invoke-RestMethod http://127.0.0.1:8000/sample-json
@@ -97,84 +132,75 @@ Invoke-RestMethod -Method Post -Uri http://127.0.0.1:8000/predict `
   -ContentType "application/json" -Body ($sample | ConvertTo-Json -Depth 5)
 ```
 
-`/predict` devuelve `probability_not_fully_paid`, `probability_fully_paid`, `prediction`, `prediction_label` y el threshold guardado en el bundle. `prediction = 1` / `review` significa que la probabilidad supera el threshold operativo; `prediction = 0` / `no_review` significa que no lo supera. Ninguna salida supone una decisión crediticia definitiva.
+`/predict` devuelve las probabilidades de ambas clases, `prediction`, `prediction_label` y el umbral usado. `review` significa que la probabilidad supera el umbral configurado; `no_review`, que no lo supera. Estas etiquetas indican prioridad de revisión, no una decisión crediticia.
 
-`/predict-file` acepta un objeto o una lista JSON. Incluye un `rank` y devuelve los casos de mayor probabilidad primero. Ejemplo:
+### Priorización por capacidad
 
-```json
-[
-  {"credit.policy": 1, "purpose": "debt_consolidation", "int.rate": 0.1189, "installment": 829.1, "log.annual.inc": 11.3504, "dti": 19.48, "fico": 737, "days.with.cr.line": 5639.9583, "revol.bal": 28854, "revol.util": 52.1, "inq.last.6mths": 0, "delinq.2yrs": 0, "pub.rec": 0}
-]
-```
-
-Ambos endpoints también aceptan un CSV como `multipart/form-data`, adjuntado en el campo `file`. La primera fila debe contener los 13 nombres de feature del modelo (por ejemplo, `credit.policy`, `int.rate` y `days.with.cr.line`); cada fila posterior representa un préstamo. Las celdas vacías se tratan como valores ausentes. Ejemplo:
-
-```powershell
-curl.exe -X POST http://127.0.0.1:8000/predict-file `
-  -F "file=@loans.csv"
-```
-
-`/prioritize` puede aplicar una capacidad máxima al lote recibido. Con CSV, envía `review_capacity` como otro campo multipart opcional:
+`/prioritize` acepta un objeto JSON con una lista `records`. Puede incluir `review_capacity` para marcar como `review` los K casos mejor puntuados y como `no_review` los restantes. Si se omite, se conserva la clasificación por umbral del artefacto.
 
 ```json
 {
-  "review_capacity": 1,
+  "review_capacity": 10,
   "records": [
-    {"credit.policy": 1, "purpose": "debt_consolidation", "int.rate": 0.1189, "installment": 829.1, "log.annual.inc": 11.3504, "dti": 19.48, "fico": 737, "days.with.cr.line": 5639.9583, "revol.bal": 28854, "revol.util": 52.1, "inq.last.6mths": 0, "delinq.2yrs": 0, "pub.rec": 0}
+    {
+      "credit.policy": 1,
+      "purpose": "debt_consolidation",
+      "int.rate": 0.1189,
+      "installment": 829.1,
+      "log.annual.inc": 11.3504,
+      "dti": 19.48,
+      "fico": 737,
+      "days.with.cr.line": 5639.9583,
+      "revol.bal": 28854,
+      "revol.util": 52.1,
+      "inq.last.6mths": 0,
+      "delinq.2yrs": 0,
+      "pub.rec": 0
+    }
   ]
 }
 ```
 
-Con `review_capacity`, los K primeros quedan etiquetados `review` y el resto `no_review`; si se omite, se usa el threshold del bundle. Esto es priorización de trabajo para revisión humana, no aprobación/rechazo automático.
+`/predict-file` acepta un registro o una lista JSON y devuelve los casos ordenados por probabilidad descendente, con su posición (`rank`). Tanto `/predict-file` como `/prioritize` aceptan también un archivo CSV mediante `multipart/form-data`, en el campo `file`. El CSV debe tener encabezados para las 13 variables del modelo:
 
-```powershell
-curl.exe -X POST http://127.0.0.1:8000/prioritize `
-  -F "file=@loans.csv" `
+```bash
+curl -X POST http://127.0.0.1:8000/prioritize \
+  -F "file=@loans.csv" \
   -F "review_capacity=10"
 ```
 
-## Datos ausentes y valores inválidos
+Se admiten valores ausentes (`null` en JSON y celdas vacías en CSV); el pipeline utiliza las imputaciones aprendidas durante el entrenamiento. Los valores numéricos fuera de los rangos observados, categorías no conocidas, columnas adicionales o el target `not.fully.paid` como entrada se rechazan con HTTP 422.
 
-- Deben enviarse las 13 features del modelo; una feature puede valer `null`.
-- Los faltantes numéricos se imputan con la mediana aprendida por el `SimpleImputer` del pipeline durante entrenamiento.
-- `purpose` ausente se imputa con la moda entrenada. No se calculan medias, medianas o categorías nuevas a partir de la solicitud.
-- Los límites numéricos de la API son el mínimo y máximo observados en el dataset histórico utilizado; son límites empíricos de entrada, no reglas de negocio o límites regulatorios.
-- `purpose` se limita a las categorías observadas al entrenar.
-- Un valor fuera del rango, una categoría no observada, una variable extra o un target `not.fully.paid` enviado como entrada se rechaza con HTTP 422. La respuesta identifica el campo y el motivo.
+### Docker
 
-## Docker
+Construir y ejecutar el servicio desde la raíz del repositorio:
 
-Después de ejecutar el notebook y generar `artifacts/credit_risk_model_bundle.joblib`:
-
-```powershell
+```bash
 docker build -t credit-risk-review .
 docker run --rm -p 127.0.0.1:8000:8000 credit-risk-review
 ```
 
-La imagen instala versiones de inferencia fijadas en `deployment/requirements.txt` para mantener compatibilidad con el artefacto. No incorpora `.env`, los CSV ni los notebooks. Swagger queda disponible en `http://localhost:8000/docs`.
+La imagen utiliza las dependencias de inferencia fijadas en [`deployment/requirements.txt`](deployment/requirements.txt), incluye el artefacto versionado y publica el servicio únicamente en el loopback del host. No incluye el dataset ni los notebooks.
 
-## Tests y equivalencia notebook/API
+## Validación y tests
 
-```powershell
+Ejecutar la suite de tests:
+
+```bash
 pytest -q
+```
+
+Verificar que las predicciones servidas por la API coinciden con el pipeline guardado en el conjunto de test:
+
+```bash
 python deployment/validate_production_model.py
 ```
 
-Los tests cubren endpoints, ranking/capacidad, imputación, target no admitido y errores 422. El validador reconstruye el split de test determinista, compara las probabilidades servidas con el pipeline guardado mediante `numpy.testing.assert_allclose`, verifica predicciones binarias exactas y confirma el threshold y los nombres de features.
+El validador reconstruye la partición determinista de test y comprueba la equivalencia de probabilidades, predicciones, umbral y nombres de variables. Los detalles de la última validación se guardan en [`reports/production_equivalence.json`](reports/production_equivalence.json).
 
-## Estructura
+## Limitaciones
 
-```text
-app/main.py                              API FastAPI
-artifacts/credit_risk_model_bundle.joblib Pipeline, imputador, features, threshold y metadata
-data/loan_data.csv                       Dataset histórico
-deployment/requirements.txt              Dependencias fijadas para inferencia/Docker
-deployment/validate_production_model.py  Equivalencia notebook/API
-notebooks/credit_risk_analysis.ipynb     EDA (sin modificaciones)
-notebooks/credit_risk_modeling.ipynb     Modelado y evaluación operativa
-reports/                                 Tablas, ranking y resultados reproducibles
-src/credit_risk/evaluation.py            Métricas de ranking y umbrales
-src/credit_risk/notebook_reporting.py     Evaluación final y exportación del bundle
-tests/                                   Tests de evaluación y API
-Dockerfile                               Contenedor de inferencia
-```
+- Los datos describen préstamos históricos de 2007–2010 y no representan necesariamente las condiciones, población o políticas de crédito actuales.
+- Las capacidades de revisión evaluadas son escenarios hipotéticos; no representan la capacidad real de un equipo.
+- Las métricas agregadas no evalúan por sí solas equidad, impacto sobre grupos protegidos, deriva temporal ni adecuación regulatoria.
+- La API no incorpora autenticación ni TLS. Mantenerla en loopback para pruebas locales; antes de exponerla a una red, añadir controles de acceso, transporte seguro, monitorización y las salvaguardas de privacidad y gobernanza pertinentes.
